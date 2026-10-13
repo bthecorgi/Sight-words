@@ -6,6 +6,7 @@ import {
   currentWeek, startDateFor, dayStats, counts, nextCard, nextLearningDue, wordStatus,
   trickyWords, distractors, shuffle, LAST_WEEK,
 } from './queue.js';
+import { rankVoices } from './voices.js';
 
 const STORE_KEY = 'sight-words-v1';
 const DEFAULT_SETTINGS = {
@@ -108,19 +109,7 @@ const speech = {
     if (!('speechSynthesis' in window)) return;
     this.voices = speechSynthesis.getVoices();
   },
-  quality(v) {
-    const id = `${v.voiceURI} ${v.name}`.toLowerCase();
-    if (id.includes('premium')) return 3;
-    if (id.includes('enhanced')) return 2;
-    if (id.includes('compact')) return 0;
-    return 1;
-  },
-  // English voices, best first, US English ahead of other accents.
-  list() {
-    const lang = (v) => v.lang.replace('_', '-').toLowerCase();
-    return this.voices.filter((v) => lang(v).startsWith('en'))
-      .sort((a, b) => (this.quality(b) - this.quality(a)) || ((lang(b) === 'en-us') - (lang(a) === 'en-us')));
-  },
+  list() { return rankVoices(this.voices); },
   pick() {
     const list = this.list();
     return list.find((v) => v.voiceURI === S().voice) || list[0] || null;
@@ -670,7 +659,7 @@ function renderSettings(v) {
     <div class="card">
       <h2>Sound</h2>
       <div class="field"><label for="autoplay">Say the word when the answer shows</label>${toggle('autoplay', st.autoplay)}</div>
-      <div class="field"><label for="voice">Voice<small>${voices.length ? 'For a better voice on iPhone: Settings → Accessibility → Read & Speak → Voices → English.' : 'No English voices found yet.'}</small></label>
+      <div class="field"><label for="voice">Voice<small>${voices.length ? 'For the most natural voice on iPhone, download <b>Ava (Premium)</b> or <b>Samantha (Enhanced)</b>: Settings → Accessibility → Read & Speak (Spoken Content) → Voices → English. The app picks it automatically.' : 'No English voices found yet.'}</small></label>
         <select id="voice"><option value="">Automatic</option>${voices.map((x) => `<option value="${esc(x.voiceURI)}" ${x.voiceURI === st.voice ? 'selected' : ''}>${esc(x.name)} (${esc(x.lang)})</option>`).join('')}</select></div>
       <div class="field"><label for="rate">Speed <small>${st.rate.toFixed(2)}×</small></label><input type="range" id="rate" min="0.5" max="1.2" step="0.05" value="${st.rate}"></div>
       <div class="btn-row"><button class="btn" data-say="Look! I can read the big red cat.">🔊 Test voice</button></div>

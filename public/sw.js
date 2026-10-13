@@ -1,5 +1,5 @@
 // Offline cache. Bump VERSION whenever any file this app uses changes (including srs.js).
-const VERSION = 'v2';
+const VERSION = 'v3';
 const CACHE = `sight-words-${VERSION}`;
 const SHELL = [
   './',
@@ -8,6 +8,7 @@ const SHELL = [
   'app.js',
   'deck.js',
   'queue.js',
+  'voices.js',
   'srs.js',
   'manifest.webmanifest',
   'fonts/andika-400.woff2',

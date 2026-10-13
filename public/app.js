@@ -644,7 +644,7 @@ function renderSettings(v) {
   v.innerHTML = `
     <div class="card">
       <h2>Reader</h2>
-      <div class="field"><label for="name">Name</label><input type="text" id="name" value="${esc(P().name)}" placeholder="Your son’s name" autocomplete="off"></div>
+      <div class="field"><label for="name">Name</label><input type="text" id="name" value="${esc(P().name)}" placeholder="Child’s name" autocomplete="off"></div>
       <div class="field"><label for="profile">Profile<small>Each child keeps their own progress.</small></label>
         <select id="profile">${profiles.map(([k, x]) => `<option value="${k}" ${k === store.current ? 'selected' : ''}>${esc(x.name || 'Reader')}</option>`).join('')}
           <option value="+">＋ Add a child…</option></select></div>

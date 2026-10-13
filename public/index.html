@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Sight Words</title>
+  <meta name="description" content="Anki-style flashcards for the Fry First 50 and Dolch Pre-Primer sight words, with CVC phonics and sentence practice, following a 16-week plan.">
+  <meta name="theme-color" content="#2563eb">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Sight Words">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="preload" href="fonts/andika-700.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1>Sight Words</h1>
+  </header>
+
+  <main id="view" aria-live="polite">
+    <p class="loading">Loading…</p>
+  </main>
+
+  <nav class="tabbar" aria-label="Sections">
+    <button data-tab="home" class="active"><span class="ico">🏠</span><span>Today</span></button>
+    <button data-tab="plan"><span class="ico">🗓️</span><span>Plan</span></button>
+    <button data-tab="words"><span class="ico">🌻</span><span>Words</span></button>
+    <button data-tab="settings"><span class="ico">⚙️</span><span>Settings</span></button>
+  </nav>
+
+  <dialog id="sheet"></dialog>
+  <div id="toast" role="status"></div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,18 @@
+{
+  "name": "Sight Words",
+  "short_name": "Sight Words",
+  "description": "Anki-style flashcards for the Fry First 50 and Dolch Pre-Primer sight words, with CVC phonics and sentence practice.",
+  "lang": "en-US",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#fffaf0",
+  "theme_color": "#2563eb",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

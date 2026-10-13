@@ -1,0 +1,12 @@
+{
+  "name": "sight-words",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Installable Anki-style flashcard PWA for the Fry First 50 and Dolch Pre-Primer sight words, with CVC phonics and a 16-week plan.",
+  "type": "module",
+  "scripts": {
+    "build:icons": "node scripts/make-icons.mjs",
+    "serve": "npx http-server public -p 8080 -c-1",
+    "test": "node --test scripts/*.test.mjs"
+  }
+}

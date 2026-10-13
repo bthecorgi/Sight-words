@@ -6,7 +6,7 @@ import {
   currentWeek, startDateFor, dayStats, counts, nextCard, nextLearningDue, wordStatus,
   trickyWords, distractors, shuffle, LAST_WEEK,
 } from './queue.js';
-import { rankVoices } from './voices.js';
+import { rankVoices, qualityLabel } from './voices.js';
 
 const STORE_KEY = 'sight-words-v1';
 const DEFAULT_SETTINGS = {
@@ -660,7 +660,8 @@ function renderSettings(v) {
       <h2>Sound</h2>
       <div class="field"><label for="autoplay">Say the word when the answer shows</label>${toggle('autoplay', st.autoplay)}</div>
       <div class="field"><label for="voice">Voice<small>${voices.length ? 'For the most natural voice on iPhone, download <b>Ava (Premium)</b> or <b>Samantha (Enhanced)</b>: Settings → Accessibility → Read & Speak (Spoken Content) → Voices → English. The app picks it automatically.' : 'No English voices found yet.'}</small></label>
-        <select id="voice"><option value="">Automatic</option>${voices.map((x) => `<option value="${esc(x.voiceURI)}" ${x.voiceURI === st.voice ? 'selected' : ''}>${esc(x.name)} (${esc(x.lang)})</option>`).join('')}</select></div>
+        <select id="voice"><option value="">Automatic</option>${voices.map((x) => `<option value="${esc(x.voiceURI)}" ${x.voiceURI === st.voice ? 'selected' : ''}>${esc(x.name)}${qualityLabel(x) ? ` · ${qualityLabel(x)}` : ''} (${esc(x.lang)})</option>`).join('')}</select></div>
+      ${speech.pick() ? `<p class="small muted" style="margin:6px 0 0">Now using: <b>${esc(speech.pick().name)}${qualityLabel(speech.pick()) ? ` · ${qualityLabel(speech.pick())}` : ''}</b>. Just downloaded a voice? Close the app fully and reopen it.</p>` : ''}
       <div class="field"><label for="rate">Speed <small>${st.rate.toFixed(2)}×</small></label><input type="range" id="rate" min="0.5" max="1.2" step="0.05" value="${st.rate}"></div>
       <div class="btn-row"><button class="btn" data-say="Look! I can read the big red cat.">🔊 Test voice</button></div>
     </div>

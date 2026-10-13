@@ -42,3 +42,21 @@ test('desktop Chrome prefers the Google US voice', () => {
   const chrome = [v('Google UK English Male', 'en-GB', 'Google UK English Male'), v('Google US English', 'en-US', 'Google US English')];
   assert.equal(rankVoices(chrome)[0].name, 'Google US English');
 });
+
+test('the same voice in three sizes: Premium first, and labelled apart', async () => {
+  const { qualityLabel } = await import('../public/voices.js');
+  const avas = [
+    v('Ava', 'en-US', 'com.apple.voice.compact.en-US.Ava'),
+    v('Ava', 'en-US', 'com.apple.voice.premium.en-US.Ava'),
+    v('Ava', 'en-US', 'com.apple.voice.enhanced.en-US.Ava'),
+  ];
+  const ranked = rankVoices([...IOS, ...avas]);
+  assert.equal(ranked[0].voiceURI, 'com.apple.voice.premium.en-US.Ava');
+  assert.deepEqual(avas.map(qualityLabel), ['', 'Premium', 'Enhanced']);
+});
+
+test('real voices with old-style Apple ids are kept', () => {
+  const ava = v('Ava', 'en-US', 'com.apple.speech.synthesis.voice.ava.premium');
+  const ranked = rankVoices([...IOS, ava]);
+  assert.equal(ranked[0], ava);
+});

@@ -21,7 +21,9 @@ const lang = (v) => v.lang.replace('_', '-').toLowerCase();
 
 export function isNovelty(v) {
   const id = (v.voiceURI || '').toLowerCase();
-  return NOVELTY.has(baseName(v)) || id.includes('eloquence') || id.includes('speech.synthesis.voice.');
+  // Match by name: Apple also uses com.apple.speech.synthesis.voice.* ids for real voices,
+  // including downloaded Premium ones, so the id prefix can't be used to spot novelty voices.
+  return NOVELTY.has(baseName(v)) || id.includes('eloquence');
 }
 
 export function quality(v) {
@@ -38,6 +40,13 @@ function score(v) {
   return Math.max(1, quality(v)) * 100
     + (pref === -1 ? 0 : 50 - pref)
     + (lang(v) === 'en-us' ? 5 : 0);
+}
+
+// "Premium" / "Enhanced" for the dropdown, unless the name already says so.
+// Apple gives every size of a voice the same name, so without this they look identical.
+export function qualityLabel(v) {
+  const label = ['', '', 'Enhanced', 'Premium'][quality(v)];
+  return label && !v.name.toLowerCase().includes(label.toLowerCase()) ? label : '';
 }
 
 // English voices without the novelty ones, best first.

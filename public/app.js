@@ -206,6 +206,9 @@ function renderHome(v) {
   v.innerHTML = `
     ${isIOS && !standalone ? `<div class="card install-hint"><b>Install on iPhone / iPad</b>
       <p class="small">In Safari, tap <b>Share</b>, then <b>Add to Home Screen</b>. The app then works offline and opens full screen.</p></div>` : ''}
+    ${wk.n > 1 && (P().checkedWeek || 0) < wk.n && seedsUpTo(wk.n - 1).length >= 5 ? `<div class="card install-hint"><b>Starting at week ${wk.n}?</b>
+      <p class="small">${seedsUpTo(wk.n - 1).length} words from earlier weeks haven’t started yet. If he already knows some, a quick check marks them green so he skips those lessons.</p>
+      <button class="btn" id="check-home" style="margin-top:8px">📝 Quick check</button></div>` : ''}
     <div class="card hero">
       <div class="counts">
         <div class="n-new"><b>${c.fresh}</b><span>New</span></div>
@@ -235,6 +238,8 @@ function renderHome(v) {
     </div>`;
   $('#study').onclick = () => startStudy();
   $('#practice-week').onclick = () => startPractice(words, `Week ${wk.n} words`);
+  const ch = $('#check-home');
+  if (ch) ch.onclick = () => startCheck(seedsUpTo(week()), `Weeks 1–${week()}`);
   bindChips(v);
 }
 
@@ -264,6 +269,7 @@ function renderPlan(v) {
           <ul class="sentences">${w.sentences.map((t) => `<li data-say="${esc(t)}">🔊 ${esc(t)}</li>`).join('')}</ul>
           <div class="btn-row">
             <button class="btn" data-practice="${w.n}">🎯 Practice</button>
+            ${w.sight.some((x) => status(x) === 'seed') ? `<button class="btn" data-check="${w.n}">📝 Quick check</button>` : ''}
             ${w.n !== cur ? `<button class="btn" data-setweek="${w.n}">${w.n > cur ? '🔓 Start this week now' : '↩︎ Go back to this week'}</button>` : ''}
           </div>
         </div></details>`;
@@ -271,6 +277,9 @@ function renderPlan(v) {
   bindChips(v);
   v.querySelectorAll('[data-practice]').forEach((b) => {
     b.onclick = () => { const w = WEEKS[b.dataset.practice - 1]; startPractice(w.sight.length ? w.sight : reviewWords(w), `Week ${w.n}`); };
+  });
+  v.querySelectorAll('[data-check]').forEach((b) => {
+    b.onclick = () => startCheck(WEEKS[b.dataset.check - 1].sight, `Week ${b.dataset.check}`);
   });
   v.querySelectorAll('[data-setweek]').forEach((b) => {
     b.onclick = () => {
@@ -300,6 +309,11 @@ function renderWords(v) {
         <button class="btn" id="pr-find" ${met.length ? '' : 'disabled'}>👂 Find-it game</button>
       </div>
     </div>
+    <div class="card">
+      <h2>📝 Quick check</h2>
+      <p class="small muted" style="margin-top:-4px">Already knows some words? Flash every word he hasn’t started (up to week ${week()}) and tap ✅ for the ones he reads. Those turn green and skip the lessons.</p>
+      <button class="btn" id="check-all" ${seedsUpTo(week()).length ? '' : 'disabled'}>Check ${seedsUpTo(week()).length} word${seedsUpTo(week()).length === 1 ? '' : 's'}</button>
+    </div>
     <div class="legend"><span>· not yet</span><span>🌱 learning</span><span>🌷 knows it</span><span>🌻 knows it well</span><span>🔒 later week</span></div>
     ${WEEKS.filter((w) => w.sight.length).map((w) => `<h3 class="month">Week ${w.n}</h3>
       <div class="garden">${w.sight.map((x) => {
@@ -311,6 +325,7 @@ function renderWords(v) {
   $('#pr-tricky').onclick = () => startPractice(tricky, 'Tricky words');
   $('#pr-all').onclick = () => startPractice(met, 'All my words');
   $('#pr-find').onclick = () => startPractice(met, 'Find-it game', 'f');
+  $('#check-all').onclick = () => startCheck(seedsUpTo(week()), `Weeks 1–${week()}`);
 }
 
 function showWord(w) {
@@ -354,6 +369,17 @@ function startPractice(words, label, kind = 's') {
   go('study');
 }
 
+// Quick check: flash words he hasn't started, and mark the ones he can already read as known,
+// so a child who starts mid-plan doesn't sit through introductions for words he knows.
+function startCheck(words, label) {
+  const todo = words.filter((w) => status(w) === 'seed');
+  if (!todo.length) { toast('No unstarted words to check here.'); return; }
+  session = newSession({ practice: { label, kind: 's', check: true, known: 0, queue: todo.map((w) => `s:${w}`), total: todo.length } });
+  go('study');
+}
+
+const seedsUpTo = (n) => ALL_SIGHT.filter((w) => weekOfSight(w) <= n && status(w) === 'seed');
+
 function headHtml() {
   const mins = Math.floor((Date.now() - session.started) / 60000);
   let left;
@@ -370,7 +396,7 @@ function headHtml() {
 }
 
 function renderStudy(v) {
-  setTitle(session?.practice ? 'Practice' : 'Let’s read!', 'home');
+  setTitle(session?.practice ? (session.practice.check ? 'Quick check' : 'Practice') : 'Let’s read!', 'home');
   if (!session) session = newSession();
   clearTimeout(session.wait);
   const now = Date.now();
@@ -403,7 +429,9 @@ function renderStudy(v) {
       <div class="confetti" aria-hidden="true">${'🎉⭐🌟✨🎈'.repeat(4).match(/./gu).map((e, i) => `<i style="--x:${(i * 37) % 100}%;--d:${(i % 7) * 0.15}s">${e}</i>`).join('')}</div>
       <div class="big">🏆</div>
       <h2>Great job${p.name ? `, ${esc(p.name)}` : ''}!</h2>
-      <p class="muted">You did ${session.done} card${session.done === 1 ? '' : 's'} and earned ${session.stars} star${session.stars === 1 ? '' : 's'}.${streak() > 1 ? ` 🔥 ${streak()} days in a row!` : ''}</p>
+      <p class="muted">${session.practice?.check
+        ? `${session.practice.known} of ${session.practice.total} words are now marked as known 🌷. They come back for review in a few days. ${session.practice.total - session.practice.known ? 'The others will be taught in regular sessions.' : ''}`
+        : `You did ${session.done} card${session.done === 1 ? '' : 's'} and earned ${session.stars} star${session.stars === 1 ? '' : 's'}.${streak() > 1 ? ` 🔥 ${streak()} days in a row!` : ''}`}</p>
       <button class="btn primary" id="home">Back home</button></div></div>`;
     $('#home').onclick = () => go('home');
     bindHead();
@@ -431,7 +459,9 @@ function renderStudy(v) {
   } else {
     const revealed = session.revealed || intro;
     body = frontHtml(info, revealed, intro);
-    if (intro) {
+    if (session.practice?.check) {
+      actions = `<div class="ratings two"><button class="r1" data-check="0">❌ Not yet</button><button class="r3" data-check="1">✅ Knows it</button></div>`;
+    } else if (intro) {
       actions = '<button class="btn primary block" id="intro">I’ll remember it! ▶</button>';
     } else if (!revealed) {
       actions = '<button class="btn primary block" id="reveal">Show me</button>';
@@ -464,6 +494,7 @@ function renderStudy(v) {
   if (introBtn) introBtn.onclick = () => rate(AGAIN);
   v.querySelectorAll('[data-rate]').forEach((b) => { b.onclick = () => rate(Number(b.dataset.rate)); });
   v.querySelectorAll('[data-prate]').forEach((b) => { b.onclick = () => practiceRate(b.dataset.prate === '1'); });
+  v.querySelectorAll('[data-check]').forEach((b) => { b.onclick = () => checkRate(b.dataset.check === '1'); });
   v.querySelectorAll('[data-choice]').forEach((b) => { b.onclick = () => choose(b.dataset.choice, b); });
   bindHead();
 }
@@ -587,6 +618,23 @@ function practiceRate(ok) {
   render();
 }
 
+function checkRate(knows) {
+  const id = session.practice.queue.shift();
+  const w = id.slice(2);
+  if (knows) {
+    // Same as Easy on a new card: straight to review in about 4 days, without using today's new-word quota.
+    P().cards[id] = schedule(P().cards[id] || newCard(), EASY, Date.now());
+    session.practice.known++;
+    award();
+  }
+  speech.word(w);
+  if (!session.practice.queue.length) P().checkedWeek = week(); // stop suggesting a check on Today
+  save();
+  session.done++;
+  session.current = null;
+  render();
+}
+
 function choose(w, btn) {
   const info = cardInfo(session.current);
   if (session.picked.includes(w) || session.locked) return;
@@ -613,7 +661,7 @@ function choose(w, btn) {
 
 document.addEventListener('keydown', (e) => {
   if (route.name !== 'study' || !session?.current || e.target.matches('input, select, textarea')) return;
-  if (cardInfo(session.current).kind === 'f') return;
+  if (cardInfo(session.current).kind === 'f' || session.practice?.check) return;
   if (!session.revealed && (e.key === ' ' || e.key === 'Enter')) { e.preventDefault(); $('#intro') ? rate(AGAIN) : doReveal(); }
   else if (session.revealed && !session.practice && ['1', '2', '3', '4'].includes(e.key)) rate(Number(e.key));
   else if (session.revealed && e.key === ' ') { e.preventDefault(); session.practice ? practiceRate(true) : rate(GOOD); }

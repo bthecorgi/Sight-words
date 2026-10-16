@@ -140,6 +140,8 @@ body.studying { padding-bottom: 0; }
 .chip.w-flower { border-color: var(--flower); background: color-mix(in srgb, var(--flower) 14%, var(--surface)); }
 .chip.cvc { font-weight: 400; font-size: 18px; }
 
+h2.section { margin: 22px 4px 0; font-size: 20px; }
+
 /* Plan */
 .month { margin: 18px 4px 8px; font-size: 15px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
 .week { padding: 0; }

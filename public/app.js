@@ -245,6 +245,7 @@ function renderHome(v) {
 
 function bindChips(el) {
   el.querySelectorAll('[data-word]').forEach((b) => { b.onclick = () => showWord(b.dataset.word); });
+  el.querySelectorAll('[data-cvc]').forEach((b) => { b.onclick = () => showCvc(b.dataset.cvc); });
 }
 
 // ---------- plan ----------
@@ -269,7 +270,7 @@ function renderPlan(v) {
           <ul class="sentences">${w.sentences.map((t) => `<li data-say="${esc(t)}">🔊 ${esc(t)}</li>`).join('')}</ul>
           <div class="btn-row">
             <button class="btn" data-practice="${w.n}">🎯 Practice</button>
-            ${w.sight.some((x) => status(x) === 'seed') || (S().cvcCards && w.cvc.some((x) => cvcStatus(x) === 'seed')) ? `<button class="btn" data-check="${w.n}">📝 Quick check</button>` : ''}
+            <button class="btn" data-check="${w.n}">📝 Test this week</button>
             ${w.n !== cur ? `<button class="btn" data-setweek="${w.n}">${w.n > cur ? '🔓 Start this week now' : '↩︎ Go back to this week'}</button>` : ''}
           </div>
         </div></details>`;
@@ -279,7 +280,11 @@ function renderPlan(v) {
     b.onclick = () => { const w = WEEKS[b.dataset.practice - 1]; startPractice(w.sight.length ? w.sight : reviewWords(w), `Week ${w.n}`); };
   });
   v.querySelectorAll('[data-check]').forEach((b) => {
-    b.onclick = () => { const w = WEEKS[b.dataset.check - 1]; startCheck(w.sight, `Week ${w.n}`, w.cvc); };
+    b.onclick = () => {
+      const w = WEEKS[b.dataset.check - 1];
+      const ids = [...(w.sight.length ? w.sight : reviewWords(w)).map((x) => `s:${x}`), ...(S().cvcCards ? w.cvc.map((x) => `c:${x}`) : [])];
+      testFrom(ids, ids[0], `Week ${w.n}`);
+    };
   });
   v.querySelectorAll('[data-setweek]').forEach((b) => {
     b.onclick = () => {
@@ -315,12 +320,21 @@ function renderWords(v) {
       <button class="btn" id="check-all" ${seedsUpTo(week()).length + cvcSeedsUpTo(week()).length ? '' : 'disabled'}>Check ${plural(seedsUpTo(week()).length, 'word')}${cvcSeedsUpTo(week()).length ? ` + ${cvcSeedsUpTo(week()).length} phonics` : ''}</button>
     </div>
     <div class="legend"><span>· not yet</span><span>🌱 learning</span><span>🌷 knows it</span><span>🌻 knows it well</span><span>🔒 later week</span></div>
+    <p class="small muted" style="margin:10px 4px 0">Tap any word to hear it, or to test him starting from that word.</p>
+    <h2 class="section">Sight words</h2>
     ${WEEKS.filter((w) => w.sight.length).map((w) => `<h3 class="month">Week ${w.n}</h3>
       <div class="garden">${w.sight.map((x) => {
         const st = status(x);
         const lock = !unlocked(x) && st === 'seed';
         return `<button class="w-${st}${lock ? ' lock' : ''}" data-word="${esc(x)}"><span>${esc(x)}</span><i>${lock ? '🔒' : PLANT[st]}</i></button>`;
-      }).join('')}</div>`).join('')}`;
+      }).join('')}</div>`).join('')}
+    ${S().cvcCards ? `<h2 class="section">Phonics words</h2>
+    ${WEEKS.filter((w) => w.cvc.length).map((w) => `<h3 class="month">Week ${w.n} · ${esc(w.cvcFocus)}</h3>
+      <div class="garden">${w.cvc.map((x) => {
+        const st = cvcStatus(x);
+        const lock = w.n > week() && st === 'seed';
+        return `<button class="w-${st}${lock ? ' lock' : ''}" data-cvc="${esc(x)}"><span>${esc(x)}</span><i>${lock ? '🔒' : PLANT[st]}</i></button>`;
+      }).join('')}</div>`).join('')}` : ''}`;
   bindChips(v);
   $('#pr-tricky').onclick = () => startPractice(tricky, 'Tricky words');
   $('#pr-all').onclick = () => startPractice(met, 'All my words');
@@ -344,11 +358,47 @@ function showWord(w) {
     <p class="ex" data-say="${esc(d.ex)}">🔊 ${exampleHtml(w)}</p>
     <p class="small muted">${PLANT[st] === '·' ? '' : PLANT[st]} ${esc(label)} · Week ${weekOfSight(w)} · ${list} · ${d.pic ? 'concrete' : 'abstract'}</p>
     ${card && card.state !== 'new' ? `<p class="small muted">Seen ${card.reps}× · missed ${card.lapses}× · next review ${esc(next)}</p>` : ''}
+    ${testButtons()}
   </div>`;
+  openSheet(sheet, () => testFrom(ALL_SIGHT.map((x) => `s:${x}`), `s:${w}`, 'Sight words'));
+  speech.word(w);
+}
+
+function showCvc(w) {
+  const card = P().cards[`c:${w}`];
+  const st = cvcStatus(w);
+  const wk = WEEKS.find((x) => x.cvc.includes(w));
+  const label = { seed: wk.n <= week() ? 'Not started yet' : `Comes in week ${wk.n}`, sprout: 'Learning', bud: 'Can sound it out', flower: 'Sounds it out easily' }[st];
+  const sheet = $('#sheet');
+  sheet.innerHTML = `<div class="sheet-body">
+    <button class="sheet-close" aria-label="Close">✕</button>
+    <div class="tiles" style="margin-top:12px">${graphemes(w).map((g) => `<button class="tile${/^[aeiou]$/.test(g) ? ' vowel' : ''}" data-sound="${g}">${g}</button>`).join('')}</div>
+    <div class="pic">${CVC_PICS[w] || ''}</div>
+    <div class="row" style="justify-content:center">${speakBtn(w, `Say ${w}`)}</div>
+    <p class="small muted">${PLANT[st] === '·' ? '' : PLANT[st]} ${esc(label)} · Week ${wk.n} · ${esc(wk.cvcFocus)}</p>
+    ${card && card.state !== 'new' ? `<p class="small muted">Seen ${card.reps}× · missed ${card.lapses}×</p>` : ''}
+    ${testButtons()}
+  </div>`;
+  openSheet(sheet, () => testFrom(ALL_CVC.map((x) => `c:${x}`), `c:${w}`, 'Phonics'));
+}
+
+const testButtons = () => `<div class="btn-row" style="justify-content:center;margin-top:14px">
+    <button class="btn primary" id="test-from">📝 Test from here</button></div>
+  <p class="small muted" style="margin-top:6px">Starts at this word and goes on through the list. Tap ‹ Back whenever you want to stop.</p>`;
+
+function openSheet(sheet, onTest) {
   $('.sheet-close', sheet).onclick = () => sheet.close();
   sheet.onclick = (e) => { if (e.target === sheet) sheet.close(); };
+  $('#test-from', sheet).onclick = () => { sheet.close(); onTest(); };
   sheet.showModal();
-  speech.word(w);
+}
+
+// A test over `ids`, starting at `fromId`. Unlike the unstarted-only Quick check this covers every
+// card, and the answers count: ✅ moves a card on, ❌ sends a started card back to learning.
+function testFrom(ids, fromId, label) {
+  const queue = ids.slice(Math.max(0, ids.indexOf(fromId)));
+  session = newSession({ practice: { label, kind: 's', check: true, known: 0, queue, total: queue.length, mixed: isMixed(queue) } });
+  go('study');
 }
 
 // ---------- study ----------
@@ -378,10 +428,12 @@ function startCheck(words, label, cvc = []) {
     ...(S().cvcCards ? cvc.filter((w) => cvcStatus(w) === 'seed').map((w) => `c:${w}`) : []),
   ];
   if (!todo.length) { toast('Nothing unstarted to check here.'); return; }
-  session = newSession({ practice: { label, kind: 's', check: true, known: 0, queue: todo, total: todo.length } });
+  session = newSession({ practice: { label, kind: 's', check: true, known: 0, queue: todo, total: todo.length, mixed: isMixed(todo) } });
   go('study');
 }
 
+const ALL_CVC = WEEKS.flatMap((x) => x.cvc);
+const isMixed = (ids) => ids.some((id) => id[0] === 's') && ids.some((id) => id[0] === 'c');
 const cvcStatus = (w) => wordStatus(P().cards[`c:${w}`]);
 const seedsUpTo = (n) => ALL_SIGHT.filter((w) => weekOfSight(w) <= n && status(w) === 'seed');
 const cvcSeedsUpTo = (n) => (S().cvcCards ? WEEKS.filter((x) => x.n <= n).flatMap((x) => x.cvc).filter((w) => cvcStatus(w) === 'seed') : []);
@@ -398,13 +450,13 @@ function headHtml() {
   }
   return `<div class="study-head">${left}<span class="spacer"></span>
     <span>⭐ ${session.stars}</span><span>⏱ ${mins}m</span>
-    ${session.undo ? '<button class="btn" id="undo" style="padding:4px 10px">↶</button>' : ''}</div>
+    ${session.undo || session.checkUndo ? '<button class="btn" id="undo" style="padding:4px 10px">↶</button>' : ''}</div>
     ${!session.timeNoted && mins >= S().sessionMinutes ? `<div class="time-up"><span>⏰ ${mins} minutes. Great work! You can stop here.</span>
       <button class="btn" id="finish">Finish</button><button class="btn" id="keep-going">Keep going</button></div>` : ''}`;
 }
 
 function renderStudy(v) {
-  setTitle(session?.practice ? (session.practice.check ? 'Quick check' : 'Practice') : 'Let’s read!', 'home');
+  setTitle(session?.practice ? (session.practice.check ? 'Test' : 'Practice') : 'Let’s read!', 'home');
   if (!session) session = newSession();
   clearTimeout(session.wait);
   const now = Date.now();
@@ -438,7 +490,7 @@ function renderStudy(v) {
       <div class="big">🏆</div>
       <h2>Great job${p.name ? `, ${esc(p.name)}` : ''}!</h2>
       <p class="muted">${session.practice?.check
-        ? `${session.practice.known} of ${session.practice.total} cards are now marked as known 🌷. They come back for review in a few days. ${session.practice.total - session.practice.known ? 'The others will be taught in regular sessions.' : ''}`
+        ? `He knew ${session.practice.known} of ${session.done} 🌷. Those come back for review in a few days. ${session.done - session.practice.known ? 'The rest will be taught (or re-taught) in regular sessions.' : ''}`
         : `You did ${session.done} card${session.done === 1 ? '' : 's'} and earned ${session.stars} star${session.stars === 1 ? '' : 's'}.${streak() > 1 ? ` 🔥 ${streak()} days in a row!` : ''}`}</p>
       <button class="btn primary" id="home">Back home</button></div></div>`;
     $('#home').onclick = () => go('home');
@@ -470,7 +522,7 @@ function renderStudy(v) {
     if (session.practice?.check) {
       const cvc = info.kind === 'c';
       actions = `<div class="ratings two"><button class="r1" data-check="0">❌ Not yet</button><button class="r3" data-check="1">✅ ${cvc ? 'Sounds it out' : 'Knows it'}</button></div>
-        ${cvc ? '<button class="btn block skip" id="skip-phonics">Skip the phonics check</button>' : ''}`;
+        ${cvc && session.practice.mixed ? '<button class="btn block skip" id="skip-phonics">Skip the phonics check</button>' : ''}`;
     } else if (intro) {
       actions = '<button class="btn primary block" id="intro">I’ll remember it! ▶</button>';
     } else if (!revealed) {
@@ -567,6 +619,20 @@ function bindHead() {
   const u = $('#undo');
   if (!u) return;
   u.onclick = () => {
+    if (session.checkUndo) {
+      const { id, prevCard, knows, prevStars, sessionStars } = session.checkUndo;
+      if (prevCard) P().cards[id] = prevCard; else delete P().cards[id];
+      P().stars = prevStars;
+      session.stars = sessionStars;
+      if (knows) session.practice.known--;
+      session.practice.queue.unshift(id);
+      session.done = Math.max(0, session.done - 1);
+      session.checkUndo = null;
+      session.current = null;
+      save();
+      render();
+      return;
+    }
     const { id, prevCard, prevDay, prev } = session.undo;
     const p = P();
     if (prevCard) p.cards[id] = prevCard; else delete p.cards[id];
@@ -635,11 +701,18 @@ function practiceRate(ok) {
 function checkRate(knows) {
   const id = session.practice.queue.shift();
   const w = id.slice(2);
+  const prevCard = P().cards[id];
+  const card = prevCard || newCard();
+  session.checkUndo = { id, prevCard, knows, prevStars: P().stars, sessionStars: session.stars };
+  // ✅ on a new or learning card is like Easy: straight to review in about 4 days, without using
+  // today's new-word quota. On a review card it counts as Good. ❌ leaves a new card for the
+  // regular lessons and sends a started one back to learning.
   if (knows) {
-    // Same as Easy on a new card: straight to review in about 4 days, without using today's new-word quota.
-    P().cards[id] = schedule(P().cards[id] || newCard(), EASY, Date.now());
+    P().cards[id] = schedule(card, card.state === 'review' ? GOOD : EASY, Date.now());
     session.practice.known++;
     award();
+  } else if (card.state !== 'new') {
+    P().cards[id] = schedule(card, AGAIN, Date.now());
   }
   speech.word(w);
   if (!session.practice.queue.length) P().checkedWeek = week(); // stop suggesting a check on Today

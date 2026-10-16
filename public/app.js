@@ -207,7 +207,7 @@ function renderHome(v) {
     ${isIOS && !standalone ? `<div class="card install-hint"><b>Install on iPhone / iPad</b>
       <p class="small">In Safari, tap <b>Share</b>, then <b>Add to Home Screen</b>. The app then works offline and opens full screen.</p></div>` : ''}
     ${wk.n > 1 && (P().checkedWeek || 0) < wk.n && seedsUpTo(wk.n - 1).length >= 5 ? `<div class="card install-hint"><b>Starting at week ${wk.n}?</b>
-      <p class="small">${seedsUpTo(wk.n - 1).length} words from earlier weeks haven’t started yet. If he already knows some, a quick check marks them green so he skips those lessons.</p>
+      <p class="small">${seedsUpTo(wk.n - 1).length} words${cvcSeedsUpTo(wk.n - 1).length ? ` and ${cvcSeedsUpTo(wk.n - 1).length} phonics words` : ''} from earlier weeks haven’t started yet. If he already knows some, a quick check marks them green so he skips those lessons.</p>
       <button class="btn" id="check-home" style="margin-top:8px">📝 Quick check</button></div>` : ''}
     <div class="card hero">
       <div class="counts">
@@ -239,7 +239,7 @@ function renderHome(v) {
   $('#study').onclick = () => startStudy();
   $('#practice-week').onclick = () => startPractice(words, `Week ${wk.n} words`);
   const ch = $('#check-home');
-  if (ch) ch.onclick = () => startCheck(seedsUpTo(week()), `Weeks 1–${week()}`);
+  if (ch) ch.onclick = () => checkUpTo(week());
   bindChips(v);
 }
 
@@ -269,7 +269,7 @@ function renderPlan(v) {
           <ul class="sentences">${w.sentences.map((t) => `<li data-say="${esc(t)}">🔊 ${esc(t)}</li>`).join('')}</ul>
           <div class="btn-row">
             <button class="btn" data-practice="${w.n}">🎯 Practice</button>
-            ${w.sight.some((x) => status(x) === 'seed') ? `<button class="btn" data-check="${w.n}">📝 Quick check</button>` : ''}
+            ${w.sight.some((x) => status(x) === 'seed') || (S().cvcCards && w.cvc.some((x) => cvcStatus(x) === 'seed')) ? `<button class="btn" data-check="${w.n}">📝 Quick check</button>` : ''}
             ${w.n !== cur ? `<button class="btn" data-setweek="${w.n}">${w.n > cur ? '🔓 Start this week now' : '↩︎ Go back to this week'}</button>` : ''}
           </div>
         </div></details>`;
@@ -279,7 +279,7 @@ function renderPlan(v) {
     b.onclick = () => { const w = WEEKS[b.dataset.practice - 1]; startPractice(w.sight.length ? w.sight : reviewWords(w), `Week ${w.n}`); };
   });
   v.querySelectorAll('[data-check]').forEach((b) => {
-    b.onclick = () => startCheck(WEEKS[b.dataset.check - 1].sight, `Week ${b.dataset.check}`);
+    b.onclick = () => { const w = WEEKS[b.dataset.check - 1]; startCheck(w.sight, `Week ${w.n}`, w.cvc); };
   });
   v.querySelectorAll('[data-setweek]').forEach((b) => {
     b.onclick = () => {
@@ -311,8 +311,8 @@ function renderWords(v) {
     </div>
     <div class="card">
       <h2>📝 Quick check</h2>
-      <p class="small muted" style="margin-top:-4px">Already knows some words? Flash every word he hasn’t started (up to week ${week()}) and tap ✅ for the ones he reads. Those turn green and skip the lessons.</p>
-      <button class="btn" id="check-all" ${seedsUpTo(week()).length ? '' : 'disabled'}>Check ${seedsUpTo(week()).length} word${seedsUpTo(week()).length === 1 ? '' : 's'}</button>
+      <p class="small muted" style="margin-top:-4px">Already knows some words? Flash everything he hasn’t started (up to week ${week()}) and tap ✅ for the ones he can do. Those turn green and skip the lessons. Sight words first, then phonics words.</p>
+      <button class="btn" id="check-all" ${seedsUpTo(week()).length + cvcSeedsUpTo(week()).length ? '' : 'disabled'}>Check ${plural(seedsUpTo(week()).length, 'word')}${cvcSeedsUpTo(week()).length ? ` + ${cvcSeedsUpTo(week()).length} phonics` : ''}</button>
     </div>
     <div class="legend"><span>· not yet</span><span>🌱 learning</span><span>🌷 knows it</span><span>🌻 knows it well</span><span>🔒 later week</span></div>
     ${WEEKS.filter((w) => w.sight.length).map((w) => `<h3 class="month">Week ${w.n}</h3>
@@ -325,7 +325,7 @@ function renderWords(v) {
   $('#pr-tricky').onclick = () => startPractice(tricky, 'Tricky words');
   $('#pr-all').onclick = () => startPractice(met, 'All my words');
   $('#pr-find').onclick = () => startPractice(met, 'Find-it game', 'f');
-  $('#check-all').onclick = () => startCheck(seedsUpTo(week()), `Weeks 1–${week()}`);
+  $('#check-all').onclick = () => checkUpTo(week());
 }
 
 function showWord(w) {
@@ -371,14 +371,22 @@ function startPractice(words, label, kind = 's') {
 
 // Quick check: flash words he hasn't started, and mark the ones he can already read as known,
 // so a child who starts mid-plan doesn't sit through introductions for words he knows.
-function startCheck(words, label) {
-  const todo = words.filter((w) => status(w) === 'seed');
-  if (!todo.length) { toast('No unstarted words to check here.'); return; }
-  session = newSession({ practice: { label, kind: 's', check: true, known: 0, queue: todo.map((w) => `s:${w}`), total: todo.length } });
+// Phonics words come after the sight words, judged on sounding out rather than recognition.
+function startCheck(words, label, cvc = []) {
+  const todo = [
+    ...words.filter((w) => status(w) === 'seed').map((w) => `s:${w}`),
+    ...(S().cvcCards ? cvc.filter((w) => cvcStatus(w) === 'seed').map((w) => `c:${w}`) : []),
+  ];
+  if (!todo.length) { toast('Nothing unstarted to check here.'); return; }
+  session = newSession({ practice: { label, kind: 's', check: true, known: 0, queue: todo, total: todo.length } });
   go('study');
 }
 
+const cvcStatus = (w) => wordStatus(P().cards[`c:${w}`]);
 const seedsUpTo = (n) => ALL_SIGHT.filter((w) => weekOfSight(w) <= n && status(w) === 'seed');
+const cvcSeedsUpTo = (n) => (S().cvcCards ? WEEKS.filter((x) => x.n <= n).flatMap((x) => x.cvc).filter((w) => cvcStatus(w) === 'seed') : []);
+const checkUpTo = (n) => startCheck(seedsUpTo(n), `Weeks 1–${n}`, cvcSeedsUpTo(n));
+const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
 function headHtml() {
   const mins = Math.floor((Date.now() - session.started) / 60000);
@@ -430,7 +438,7 @@ function renderStudy(v) {
       <div class="big">🏆</div>
       <h2>Great job${p.name ? `, ${esc(p.name)}` : ''}!</h2>
       <p class="muted">${session.practice?.check
-        ? `${session.practice.known} of ${session.practice.total} words are now marked as known 🌷. They come back for review in a few days. ${session.practice.total - session.practice.known ? 'The others will be taught in regular sessions.' : ''}`
+        ? `${session.practice.known} of ${session.practice.total} cards are now marked as known 🌷. They come back for review in a few days. ${session.practice.total - session.practice.known ? 'The others will be taught in regular sessions.' : ''}`
         : `You did ${session.done} card${session.done === 1 ? '' : 's'} and earned ${session.stars} star${session.stars === 1 ? '' : 's'}.${streak() > 1 ? ` 🔥 ${streak()} days in a row!` : ''}`}</p>
       <button class="btn primary" id="home">Back home</button></div></div>`;
     $('#home').onclick = () => go('home');
@@ -460,7 +468,9 @@ function renderStudy(v) {
     const revealed = session.revealed || intro;
     body = frontHtml(info, revealed, intro);
     if (session.practice?.check) {
-      actions = `<div class="ratings two"><button class="r1" data-check="0">❌ Not yet</button><button class="r3" data-check="1">✅ Knows it</button></div>`;
+      const cvc = info.kind === 'c';
+      actions = `<div class="ratings two"><button class="r1" data-check="0">❌ Not yet</button><button class="r3" data-check="1">✅ ${cvc ? 'Sounds it out' : 'Knows it'}</button></div>
+        ${cvc ? '<button class="btn block skip" id="skip-phonics">Skip the phonics check</button>' : ''}`;
     } else if (intro) {
       actions = '<button class="btn primary block" id="intro">I’ll remember it! ▶</button>';
     } else if (!revealed) {
@@ -495,6 +505,8 @@ function renderStudy(v) {
   v.querySelectorAll('[data-rate]').forEach((b) => { b.onclick = () => rate(Number(b.dataset.rate)); });
   v.querySelectorAll('[data-prate]').forEach((b) => { b.onclick = () => practiceRate(b.dataset.prate === '1'); });
   v.querySelectorAll('[data-check]').forEach((b) => { b.onclick = () => checkRate(b.dataset.check === '1'); });
+  const skip = $('#skip-phonics');
+  if (skip) skip.onclick = () => { session.practice.total -= session.practice.queue.length; session.practice.queue = []; P().checkedWeek = week(); save(); session.current = null; render(); };
   v.querySelectorAll('[data-choice]').forEach((b) => { b.onclick = () => choose(b.dataset.choice, b); });
   bindHead();
 }
@@ -516,7 +528,9 @@ function frontHtml(info, revealed, intro) {
     return `<div class="tiles">${tiles}</div>
       ${revealed ? `<div class="pic">${CVC_PICS[w] || ''}</div>
         <div class="row" style="justify-content:center">${speakBtn(w, `Say ${w}`)}</div>`
-        : '<div class="prompt">Sound it out! Tap a letter to hear it.</div>'}`;
+        : `<div class="prompt">${session?.practice?.check
+          ? 'Can he sound it out by himself, smoothly? Instant recognition doesn’t count.'
+          : 'Sound it out! Tap a letter to hear it.'}</div>`}`;
   }
   // sentence
   const words = info.text.split(' ').map((t) => {

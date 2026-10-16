@@ -1,5 +1,5 @@
 // Which card comes next. Pure functions over a profile's state, so they can be tested in Node.
-import { LEARN_AHEAD, DAY, dayKey, dayStart } from './srs.js';
+import { LEARN_AHEAD, DAY, dayKey, dayStart, AGAIN, HARD, GOOD, EASY } from './srs.js';
 import { newOrder, WEEKS } from './deck.js';
 
 export const LAST_WEEK = WEEKS.length;
@@ -150,4 +150,15 @@ export function shuffle(arr, rng = Math.random) {
     [a[i], a[j]] = [a[j], a[i]];
   }
   return a;
+}
+
+// Find-it cards grade themselves. ms is the time from hearing the word to tapping it.
+// Any wrong tap first is Again; otherwise speed decides: quick and sure is Easy, slow is Hard.
+export const FIND_FAST_MS = 3000;
+export const FIND_SLOW_MS = 8000;
+export function findGrade(ms, misses) {
+  if (misses > 0) return AGAIN;
+  if (ms <= FIND_FAST_MS) return EASY;
+  if (ms <= FIND_SLOW_MS) return GOOD;
+  return HARD;
 }

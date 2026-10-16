@@ -4,7 +4,7 @@ import {
 } from './deck.js';
 import {
   currentWeek, startDateFor, dayStats, counts, nextCard, nextLearningDue, wordStatus,
-  trickyWords, distractors, shuffle, LAST_WEEK,
+  trickyWords, distractors, shuffle, findGrade, LAST_WEEK,
 } from './queue.js';
 import { rankVoices, qualityLabel } from './voices.js';
 
@@ -123,8 +123,9 @@ const speech = {
     u.lang = v?.lang || 'en-US';
     u.rate = rate ?? S().rate;
     speechSynthesis.speak(u);
+    return u;
   },
-  word(w) { this.say(WORDS[w]?.say || w); },
+  word(w) { return this.say(WORDS[w]?.say || w); },
 };
 if ('speechSynthesis' in window) {
   speech.load();
@@ -598,8 +599,14 @@ function frontHtml(info, revealed, intro) {
 function onShow() {
   const info = cardInfo(session.current);
   const card = P().cards[session.current];
-  if (info.kind === 'f') speech.word(info.word);
-  else if (info.kind === 's' && !session.practice && (!card || card.state === 'new') && S().autoplay) speech.word(info.word);
+  if (info.kind === 'f') {
+    // The answer clock starts when he has heard the word, not while it's still being spoken.
+    const id = session.current;
+    session.shownAt = Date.now();
+    session.heardAt = null;
+    const u = speech.word(info.word);
+    if (u) u.onend = () => { if (session?.current === id) session.heardAt ||= Date.now(); };
+  } else if (info.kind === 's' && !session.practice && (!card || card.state === 'new') && S().autoplay) speech.word(info.word);
 }
 
 function doReveal() {
@@ -735,14 +742,18 @@ function choose(w, btn) {
     setTimeout(() => speech.word(info.word), 700);
     return;
   }
+  // If the browser never reports the end of speech, assume the word took about 1.5 s to say.
+  const ms = Math.max(0, Date.now() - (session.heardAt ?? (session.shownAt ?? Date.now()) + 1500));
+  const grade = findGrade(ms, session.miss);
   btn.classList.add('right');
+  if (grade === EASY) btn.insertAdjacentHTML('beforeend', '<small class="fast">⚡ Fast!</small>');
   speech.say(`Yes! ${WORDS[info.word]?.say || info.word}`);
   session.locked = true;
   setTimeout(() => {
     session.locked = false;
     if (route.name !== 'study' || !session) return;
     if (session.practice) practiceRate(session.miss === 0);
-    else rate(session.miss === 0 ? GOOD : AGAIN);
+    else rate(grade);
   }, 900);
 }
 

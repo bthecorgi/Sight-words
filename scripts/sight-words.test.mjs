@@ -4,9 +4,9 @@ import {
   WORDS, WEEKS, ALL_SIGHT, CVC_PICS, SOUNDS, graphemes, interleave, newOrder, reviewWords, cardInfo,
 } from '../public/deck.js';
 import {
-  currentWeek, startDateFor, counts, nextCard, newCards, distractors, trickyWords, dayStats,
+  currentWeek, startDateFor, counts, nextCard, newCards, distractors, trickyWords, dayStats, findGrade,
 } from '../public/queue.js';
-import { newCard, schedule, AGAIN, GOOD, MIN, DAY } from '../public/srs.js';
+import { newCard, schedule, AGAIN, HARD, GOOD, EASY, MIN, DAY } from '../public/srs.js';
 
 const FRY_50 = 'the of and a to in is you that it he was for on are as with his they I at be this have from or one had by word but not what all were we when your can said there use an each which she do how their if'.split(' ');
 const DOLCH_PP = 'a and away big blue can come down find for funny go help here I in is it jump little look make me my not one play red run said see the three to two up we where yellow you'.split(' ');
@@ -189,4 +189,13 @@ test('distractors and tricky words', () => {
   p.cards['s:of'] = { ...newCard(), state: 'review', lapses: 3, ease: 1.9, ivl: 2 };
   p.cards['s:big'] = { ...newCard(), state: 'review', lapses: 0, ease: 2.5, ivl: 9 };
   assert.deepEqual(trickyWords(p, ALL_SIGHT), ['of', 'big']);
+});
+
+test('find-it grades by speed, and any miss is Again', () => {
+  assert.equal(findGrade(1200, 0), EASY);
+  assert.equal(findGrade(3000, 0), EASY);
+  assert.equal(findGrade(3001, 0), GOOD);
+  assert.equal(findGrade(8000, 0), GOOD);
+  assert.equal(findGrade(15000, 0), HARD);
+  assert.equal(findGrade(500, 1), AGAIN);
 });

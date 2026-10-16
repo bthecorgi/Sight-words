@@ -19,7 +19,7 @@ The whole plan is in `public/deck.js`: each week's words, phonics words, sentenc
 
 - **Four card types:**
   - **Read it:** the parent grades the card Again, Good or Easy. A Hard button is optional.
-  - **Find it:** the app says a word and he taps it from four choices. These cards grade themselves.
+  - **Find it:** the app says a word and he taps it from four choices. These cards grade themselves by speed, timed from when the word has been spoken: right within 3 seconds is Easy, within 8 seconds is Good, slower is Hard, and any wrong tap first is Again. Practice games aren't graded.
   - **Sound it out:** CVC words as letter tiles, with the vowels in red. He taps a tile to hear its sound.
   - **Sentences:** each one uses only words he can read by that week. The tests check this.
 - **Scheduling:** an SM-2 scheduler like Anki's (`public/srs.js`, shared with [hk-chinese-srs](https://github.com/bthecorgi/hk-chinese-srs)). Learning steps are 1 minute and 10 minutes, then intervals grow in days. The study day rolls over at 04:00.

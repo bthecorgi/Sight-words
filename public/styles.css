@@ -223,6 +223,7 @@ h2.section { margin: 22px 4px 0; font-size: 20px; }
   font-size: 38px; font-weight: 700; padding: 18px 6px;
 }
 .choice.right { background: var(--good); border-color: var(--good); color: #fff; }
+.choice .fast { display: block; font-size: 16px; font-weight: 700; }
 .choice.wrong { opacity: .35; }
 .choice.hint { border-color: var(--sun); animation: pulse 1s ease infinite; }
 .shake { animation: shake .35s ease; }

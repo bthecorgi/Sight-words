@@ -244,6 +244,8 @@ h2.section { margin: 22px 4px 0; font-size: 20px; }
 @media (prefers-color-scheme: dark) { .ratings button, .choice.right { color: #111; } }
 
 .actions .skip { margin-top: 8px; padding: 10px; font-size: 15px; background: none; border: 0; color: var(--muted); }
+.change { margin-top: 10px; padding: 10px; font-size: 16px; }
+.done .change { margin: 0 auto 12px; max-width: 360px; }
 .done { text-align: center; padding: 40px 10px; position: relative; }
 .done .big { font-size: 80px; }
 .confetti { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 10; }

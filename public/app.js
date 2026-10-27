@@ -103,29 +103,77 @@ function streak() {
 
 // ---------- speech ----------
 
+// iOS is fragile here: voices can be listed but stay silent, the queue can get stuck paused after
+// the app is backgrounded, and speak() right after cancel() can be dropped. So: refresh voices on
+// every pick, skip voices that failed to start, and fall back to the system default voice.
 const speech = {
   voices: [],
+  silent: new Set(), // voiceURIs that never started speaking
+  live: new Set(), // keeps utterances alive until they end (Safari can GC them mid-speech)
   load() {
     if (!('speechSynthesis' in window)) return;
     this.voices = speechSynthesis.getVoices();
   },
-  list() { return rankVoices(this.voices); },
+  list() {
+    if (!this.voices.length) this.load();
+    return rankVoices(this.voices);
+  },
   pick() {
-    const list = this.list();
+    const list = this.list().filter((v) => !this.silent.has(v.voiceURI));
     return list.find((v) => v.voiceURI === S().voice) || list[0] || null;
   },
-  say(text, { queue = false, rate } = {}) {
+  say(text, { rate } = {}) {
     if (!('speechSynthesis' in window)) { toast('Speech is not available on this device.'); return; }
-    if (!queue) speechSynthesis.cancel();
+    if (speechSynthesis.speaking || speechSynthesis.pending) speechSynthesis.cancel();
+    return this.speak(text, rate ?? S().rate, this.pick());
+  },
+  speak(text, rate, v) {
     const u = new SpeechSynthesisUtterance(text);
-    const v = this.pick();
-    if (v) u.voice = v;
-    u.lang = v?.lang || 'en-US';
-    u.rate = rate ?? S().rate;
+    if (v) {
+      try { u.voice = v; } catch { v = null; }
+    }
+    u.lang = (v?.lang || 'en-US').replace('_', '-');
+    u.rate = rate;
+    let started = false;
+    const retry = () => {
+      // The chosen voice won't speak: forget it and use the system default instead.
+      if (started || !v || !this.live.has(u)) return;
+      this.live.delete(u);
+      this.silent.add(v.voiceURI);
+      speechSynthesis.cancel();
+      const again = this.speak(text, rate, null);
+      again.onend = () => u.onend?.();
+    };
+    u.onstart = () => { started = true; };
+    u.onerror = (e) => {
+      if (e.error !== 'interrupted' && e.error !== 'canceled') retry();
+      this.live.delete(u);
+    };
+    u.addEventListener('end', () => this.live.delete(u));
+    this.live.add(u);
+    speechSynthesis.resume(); // a no-op unless iOS left the queue paused
     speechSynthesis.speak(u);
+    if (v) setTimeout(retry, 2000);
     return u;
   },
   word(w) { return this.say(WORDS[w]?.say || w); },
+  // iOS only lets a page speak once speech (and audio) has started inside a tap. Do that silently
+  // on the first touch so later speech from timers, like the next Find-it word, isn't blocked.
+  unlock() {
+    if (this.unlocked || !('speechSynthesis' in window)) return;
+    this.unlocked = true;
+    const u = new SpeechSynthesisUtterance(' ');
+    u.volume = 0;
+    speechSynthesis.speak(u);
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const src = ctx.createBufferSource();
+      src.buffer = ctx.createBuffer(1, 1, 22050);
+      src.connect(ctx.destination);
+      src.start(0);
+      ctx.resume?.();
+    } catch { /* no Web Audio */ }
+  },
 };
 if ('speechSynthesis' in window) {
   speech.load();
@@ -133,6 +181,9 @@ if ('speechSynthesis' in window) {
     speech.load();
     if (route.name === 'settings') render();
   });
+  for (const ev of ['touchend', 'click', 'keydown']) document.addEventListener(ev, () => speech.unlock(), { capture: true, once: true });
+  // Coming back from the background, iOS may leave speech paused.
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) speechSynthesis.resume(); });
 }
 
 // Any element with data-say speaks its text; data-sound speaks a phonics tile.
@@ -493,8 +544,10 @@ function renderStudy(v) {
       <p class="muted">${session.practice?.check
         ? `He knew ${session.practice.known} of ${session.done} 🌷. Those come back for review in a few days. ${session.done - session.practice.known ? 'The rest will be taught (or re-taught) in regular sessions.' : ''}`
         : `You did ${session.done} card${session.done === 1 ? '' : 's'} and earned ${session.stars} star${session.stars === 1 ? '' : 's'}.${streak() > 1 ? ` 🔥 ${streak()} days in a row!` : ''}`}</p>
+      ${session.practice?.check ? lastCheckHtml() : ''}
       <button class="btn primary" id="home">Back home</button></div></div>`;
     $('#home').onclick = () => go('home');
+    bindFlip();
     bindHead();
     return;
   }
@@ -523,6 +576,7 @@ function renderStudy(v) {
     if (session.practice?.check) {
       const cvc = info.kind === 'c';
       actions = `<div class="ratings two"><button class="r1" data-check="0">❌ Not yet</button><button class="r3" data-check="1">✅ ${cvc ? 'Sounds it out' : 'Knows it'}</button></div>
+        ${lastCheckHtml()}
         ${cvc && session.practice.mixed ? '<button class="btn block skip" id="skip-phonics">Skip the phonics check</button>' : ''}`;
     } else if (intro) {
       actions = '<button class="btn primary block" id="intro">I’ll remember it! ▶</button>';
@@ -561,7 +615,20 @@ function renderStudy(v) {
   const skip = $('#skip-phonics');
   if (skip) skip.onclick = () => { session.practice.total -= session.practice.queue.length; session.practice.queue = []; P().checkedWeek = week(); save(); session.current = null; render(); };
   v.querySelectorAll('[data-choice]').forEach((b) => { b.onclick = () => choose(b.dataset.choice, b); });
+  bindFlip();
   bindHead();
+}
+
+// After a ✅ / ❌, a reminder of the last answer with a one-tap fix.
+function lastCheckHtml() {
+  const last = session.checkUndo;
+  if (!last) return '';
+  return `<button class="btn block change" id="flip">${esc(cardInfo(last.id).word)}: ${last.knows ? '✅' : '❌'} · Change to ${last.knows ? '❌ Not yet' : '✅'}</button>`;
+}
+
+function bindFlip() {
+  const f = $('#flip');
+  if (f) f.onclick = flipCheck;
 }
 
 function frontHtml(info, revealed, intro) {
@@ -707,7 +774,16 @@ function practiceRate(ok) {
 
 function checkRate(knows) {
   const id = session.practice.queue.shift();
-  const w = id.slice(2);
+  applyCheck(id, knows);
+  speech.word(id.slice(2));
+  if (!session.practice.queue.length) P().checkedWeek = week(); // stop suggesting a check on Today
+  save();
+  session.done++;
+  session.current = null;
+  render();
+}
+
+function applyCheck(id, knows) {
   const prevCard = P().cards[id];
   const card = prevCard || newCard();
   session.checkUndo = { id, prevCard, knows, prevStars: P().stars, sessionStars: session.stars };
@@ -721,11 +797,18 @@ function checkRate(knows) {
   } else if (card.state !== 'new') {
     P().cards[id] = schedule(card, AGAIN, Date.now());
   }
-  speech.word(w);
-  if (!session.practice.queue.length) P().checkedWeek = week(); // stop suggesting a check on Today
+}
+
+// Tapped the wrong one of ✅ / ❌: swap the last answer without leaving the current card.
+function flipCheck() {
+  const { id, prevCard, knows, prevStars, sessionStars } = session.checkUndo;
+  if (prevCard) P().cards[id] = prevCard; else delete P().cards[id];
+  P().stars = prevStars;
+  session.stars = sessionStars;
+  if (knows) session.practice.known--;
+  applyCheck(id, !knows);
   save();
-  session.done++;
-  session.current = null;
+  toast(`${cardInfo(id).word}: changed to ${knows ? '❌ Not yet' : '✅'}`);
   render();
 }
 

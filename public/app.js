@@ -892,7 +892,9 @@ function renderSettings(v) {
         <select id="voice"><option value="">Automatic</option>${voices.map((x) => `<option value="${esc(x.voiceURI)}" ${x.voiceURI === st.voice ? 'selected' : ''}>${esc(x.name)}${qualityLabel(x) ? ` · ${qualityLabel(x)}` : ''} (${esc(x.lang)})</option>`).join('')}</select></div>
       ${speech.pick() ? `<p class="small muted" style="margin:6px 0 0">Now using: <b>${esc(speech.pick().name)}${qualityLabel(speech.pick()) ? ` · ${qualityLabel(speech.pick())}` : ''}</b>. Just downloaded a voice? Close the app fully and reopen it.</p>` : ''}
       <div class="field"><label for="rate">Speed <small>${st.rate.toFixed(2)}×</small></label><input type="range" id="rate" min="0.5" max="1.2" step="0.05" value="${st.rate}"></div>
-      <div class="btn-row"><button class="btn" data-say="Look! I can read the big red cat.">🔊 Test voice</button></div>
+      <div class="btn-row"><button class="btn" data-say="Look! I can read the big red cat.">🔊 Test voice</button>
+        <button class="btn" id="sound-check">🩺 Sound check</button></div>
+      <pre class="diag" id="diag" hidden></pre>
     </div>
     <div class="card">
       <h2>Backup</h2>
@@ -944,6 +946,7 @@ function renderSettings(v) {
   $('#voice').onchange = (e) => { st.voice = e.target.value; save(); speech.say('Hello! Let’s read.'); };
   $('#rate').oninput = (e) => { st.rate = Number(e.target.value); $('label[for=rate] small').textContent = `${st.rate.toFixed(2)}×`; };
   $('#rate').onchange = () => save();
+  $('#sound-check').onclick = soundCheck;
   $('#export').onclick = exportBackup;
   $('#import').onchange = importBackup;
   $('#reset').onclick = () => {
@@ -953,6 +956,54 @@ function renderSettings(v) {
     toast('Progress reset');
     render();
   };
+}
+
+// Shows step by step what the device does with speech, so a silent iPhone can be diagnosed
+// from a screenshot. Runs inside the tap, as iOS requires.
+function soundCheck() {
+  const out = $('#diag');
+  out.hidden = false;
+  out.textContent = '';
+  const t0 = Date.now();
+  const log = (msg) => { out.textContent += `${((Date.now() - t0) / 1000).toFixed(1)}s ${msg}\n`; };
+  log(navigator.userAgent);
+  log(`Home screen app: ${navigator.standalone || matchMedia('(display-mode: standalone)').matches ? 'yes' : 'no'}`);
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    gain.gain.value = 0.2;
+    osc.connect(gain).connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.3);
+    log(`Beep: audio ${ctx.state}`);
+    setTimeout(() => log(`Beep: audio ${ctx.state} (heard a beep? if not, check the silent switch)`), 400);
+  } catch (e) { log(`Beep failed: ${e.message}`); }
+  if (!('speechSynthesis' in window)) { log('No speechSynthesis on this device.'); return; }
+  const all = speechSynthesis.getVoices();
+  const v = speech.pick();
+  log(`Voices: ${all.length} total, ${speech.list().length} English, chosen: ${v ? `${v.name} (${v.lang})` : 'none'}`);
+  if (speech.silent.size) log(`Skipped as silent: ${[...speech.silent].join(', ')}`);
+  log(`State: speaking=${speechSynthesis.speaking} pending=${speechSynthesis.pending} paused=${speechSynthesis.paused}`);
+  const test = (label, voice, then) => {
+    const u = new SpeechSynthesisUtterance(label === 'A' ? 'One, two, three.' : 'Four, five, six.');
+    if (voice) u.voice = voice;
+    u.lang = voice?.lang || 'en-US';
+    let done = false;
+    u.onstart = () => log(`${label}: started`);
+    u.onend = () => { log(`${label}: ended`); if (!done) { done = true; then?.(); } };
+    u.onerror = (e) => { log(`${label}: error "${e.error}"`); if (!done) { done = true; then?.(); } };
+    speech.live.add(u);
+    speechSynthesis.cancel();
+    speechSynthesis.resume();
+    speechSynthesis.speak(u);
+    log(`${label}: speak() called (${voice ? voice.name : 'default voice'}); speaking=${speechSynthesis.speaking} pending=${speechSynthesis.pending}`);
+    setTimeout(() => {
+      log(`${label}: after 3s speaking=${speechSynthesis.speaking} pending=${speechSynthesis.pending} paused=${speechSynthesis.paused}`);
+      if (!done) { done = true; then?.(); }
+    }, 3000);
+  };
+  test('A', null, () => (v ? test('B', v, () => log('Done. Screenshot this and send it.')) : log('Done. Screenshot this and send it.')));
 }
 
 async function exportBackup() {

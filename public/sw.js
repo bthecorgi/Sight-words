@@ -1,5 +1,5 @@
 // Offline cache. Bump VERSION whenever any file this app uses changes (including srs.js).
-const VERSION = 'v12';
+const VERSION = 'v13';
 const CACHE = `sight-words-${VERSION}`;
 const SHELL = [
   './',

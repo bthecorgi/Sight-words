@@ -1,6 +1,5 @@
-// Recorded speech. iOS 27 home-screen apps stopped speaking through speechSynthesis (the engine
-// starts, then hangs silently), so every word, sentence and sound the app says ships as an mp3
-// in audio/, made by scripts/make-audio.py. Anything without a clip falls back to the device voice.
+// Recorded speech. Every word, sentence and sound the app says ships as an mp3 in audio/,
+// made by scripts/make-audio.py. Anything without a clip falls back to the device voice.
 
 // Phrases spoken outside the word lists.
 export const EXTRA_PHRASES = ['Yes!', 'Try again!', 'Look! I can read the big red cat.', 'Hello! Let’s read.'];
@@ -11,6 +10,9 @@ export const clipKey = (text) => String(text).toLowerCase().replace(/[’']/g, '
 // Plays clips through Web Audio. Once the context has been resumed inside a tap, iOS lets it
 // play later from timers too, which an <audio> element doesn't reliably allow.
 export function createPlayer(base = 'audio/') {
+  // iOS 27 mutes web audio and speech while the ring/silent switch is on; the 'playback'
+  // session (what music and video apps use) plays through it, as speech did before.
+  try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch { /* older Safari */ }
   let ctx = null;
   let keys = null;
   let current = null;
@@ -21,8 +23,6 @@ export function createPlayer(base = 'audio/') {
     if (!ctx) {
       const AC = window.AudioContext || window.webkitAudioContext;
       if (!AC) return null;
-      // Play even with the ring/silent switch on, like the device voice did.
-      try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch { /* older Safari */ }
       ctx = new AC();
     }
     if (ctx.state !== 'running') ctx.resume().catch(() => {});

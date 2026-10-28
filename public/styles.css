@@ -347,3 +347,4 @@ dialog#sheet::backdrop { background: rgba(0,0,0,.4); }
   .flash.revealed .word { font-size: min(13vh, 140px); }
   .pic { font-size: 72px; }
 }
+.diag { white-space: pre-wrap; word-break: break-word; font-size: 12px; background: rgba(127,127,127,.12); padding: 8px; border-radius: 8px; margin: 10px 0 0; }

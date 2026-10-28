@@ -31,11 +31,11 @@ The whole plan is in `public/deck.js`: each week's words, phonics words, sentenc
   - A streak counts the days in a row he practises.
   - A word garden shows each word growing: 🌱 → 🌷 → 🌻.
   - Words are shown in Andika, a font designed for beginning readers, with single-storey *a* and *g* (SIL OFL, in `public/fonts/`).
-- **Voice:** words are spoken with the device's English voice.
+- **Voice:** every word, sentence and letter sound is a recording in `public/audio/`, made with the open-source [Kokoro](https://huggingface.co/hexgrad/Kokoro-82M) voice (Apache-2.0). Recordings replaced the device voice because speech synthesis went silent in iOS 27 home-screen apps. Anything without a recording falls back to the device voice. After adding words or sentences, run `scripts/make-audio.py`; its setup is in the file. `npm test` fails if a recording is missing.
 - **Profiles:** each child gets their own profile.
 - **Storage:** progress stays on the device in `localStorage`. You can export and import a JSON backup.
 
-The letter sounds are the device voice saying approximations ("kuh", "aah"). If one sounds wrong, say the sound for him yourself.
+The letter sounds are generated from phonetic spellings ("kuh", "sss"). If one sounds wrong, say the sound for him yourself.
 
 ## Run locally
 

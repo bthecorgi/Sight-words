@@ -1,5 +1,5 @@
 // Offline cache. Bump VERSION whenever any file this app uses changes (including srs.js).
-const VERSION = 'v11';
+const VERSION = 'v12';
 const CACHE = `sight-words-${VERSION}`;
 const SHELL = [
   './',
@@ -9,6 +9,8 @@ const SHELL = [
   'deck.js',
   'queue.js',
   'voices.js',
+  'clips.js',
+  'audio/clips.json',
   'srs.js',
   'manifest.webmanifest',
   'fonts/andika-400.woff2',
@@ -20,8 +22,17 @@ const SHELL = [
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE)
-    .then((c) => c.addAll(SHELL.map((u) => new Request(u, { cache: 'reload' })))).then(() => self.skipWaiting()));
+    .then((c) => c.addAll(SHELL.map((u) => new Request(u, { cache: 'reload' }))).then(() => precacheClips(c)))
+    .then(() => self.skipWaiting()));
 });
+
+// Recorded speech, so it works offline from the first launch. A clip that fails to download
+// doesn't block the update; it's fetched (and cached) when first played instead.
+function precacheClips(c) {
+  return c.match('audio/clips.json').then((r) => r.json())
+    .then((keys) => Promise.allSettled(keys.map((k) => c.add(new Request(`audio/${k}.mp3`, { cache: 'reload' })))))
+    .catch(() => {});
+}
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(

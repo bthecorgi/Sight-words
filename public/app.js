@@ -7,6 +7,7 @@ import {
   trickyWords, distractors, shuffle, findGrade, LAST_WEEK,
 } from './queue.js';
 import { rankVoices, qualityLabel } from './voices.js';
+import { createPlayer, clipKey } from './clips.js';
 
 const STORE_KEY = 'sight-words-v1';
 const DEFAULT_SETTINGS = {
@@ -103,6 +104,9 @@ function streak() {
 
 // ---------- speech ----------
 
+// Recorded clips play first; the device voice only covers text without a recording.
+const clips = createPlayer();
+
 // iOS is fragile here: voices can be listed but stay silent, the queue can get stuck paused after
 // the app is backgrounded, and speak() right after cancel() can be dropped. So: refresh voices on
 // every pick, skip voices that failed to start, and fall back to the system default voice.
@@ -122,9 +126,31 @@ const speech = {
     const list = this.list().filter((v) => !this.silent.has(v.voiceURI));
     return list.find((v) => v.voiceURI === S().voice) || list[0] || null;
   },
+  // `text` may be a list of phrases, spoken one after another.
   say(text, { rate } = {}) {
+    const parts = [].concat(text);
+    const keys = parts.map(clipKey);
+    if (keys.every((k) => clips.has(k))) {
+      this.cancel();
+      const h = clips.play(keys);
+      h.onerror = () => { const u = this.device(parts.join(' '), rate); if (u) u.onend = () => h.onend?.(); };
+      return h;
+    }
+    return this.device(parts.join(' '), rate);
+  },
+  sound(g) {
+    const key = `sound-${g}`;
+    if (clips.has(key)) { this.cancel(); return clips.play([key]); }
+    return this.device(SOUNDS[g] || g, 0.7);
+  },
+  cancel() {
+    if ('speechSynthesis' in window && (speechSynthesis.speaking || speechSynthesis.pending)) speechSynthesis.cancel();
+  },
+  stop() { clips.stop(); this.cancel(); },
+  device(text, rate) {
+    clips.stop();
     if (!('speechSynthesis' in window)) { toast('Speech is not available on this device.'); return; }
-    if (speechSynthesis.speaking || speechSynthesis.pending) speechSynthesis.cancel();
+    this.cancel();
     return this.speak(text, rate ?? S().rate, this.pick());
   },
   speak(text, rate, v) {
@@ -185,6 +211,8 @@ if ('speechSynthesis' in window) {
   // Coming back from the background, iOS may leave speech paused.
   document.addEventListener('visibilitychange', () => { if (!document.hidden) speechSynthesis.resume(); });
 }
+// iOS suspends the audio context after interruptions (calls, backgrounding); every tap restarts it.
+for (const ev of ['touchend', 'click', 'keydown']) document.addEventListener(ev, () => clips.unlock(), { capture: true });
 
 // Any element with data-say speaks its text; data-sound speaks a phonics tile.
 document.addEventListener('click', (e) => {
@@ -192,7 +220,7 @@ document.addEventListener('click', (e) => {
   if (snd) {
     e.stopPropagation();
     snd.classList.remove('lit'); void snd.offsetWidth; snd.classList.add('lit');
-    speech.say(SOUNDS[snd.dataset.sound] || snd.dataset.sound, { rate: 0.7 });
+    speech.sound(snd.dataset.sound);
     return;
   }
   const b = e.target.closest('[data-say]');
@@ -218,7 +246,7 @@ function go(name, extra = {}) {
   if (route.name === 'study' && name !== 'study') {
     clearTimeout(session?.wait);
     session = null;
-    window.speechSynthesis?.cancel();
+    speech.stop();
   }
   route = { name, ...extra };
   document.body.classList.toggle('studying', name === 'study');
@@ -821,8 +849,7 @@ function choose(w, btn) {
     btn.classList.add('wrong', 'shake');
     btn.disabled = true;
     if (session.miss >= 2) $(`#view .choice[data-choice="${CSS.escape(info.word)}"]`)?.classList.add('hint');
-    speech.say('Try again!');
-    setTimeout(() => speech.word(info.word), 700);
+    speech.say(['Try again!', WORDS[info.word]?.say || info.word]);
     return;
   }
   // If the browser never reports the end of speech, assume the word took about 1.5 s to say.
@@ -830,7 +857,7 @@ function choose(w, btn) {
   const grade = findGrade(ms, session.miss);
   btn.classList.add('right');
   if (grade === EASY) btn.insertAdjacentHTML('beforeend', '<small class="fast">⚡ Fast!</small>');
-  speech.say(`Yes! ${WORDS[info.word]?.say || info.word}`);
+  speech.say(['Yes!', WORDS[info.word]?.say || info.word]);
   session.locked = true;
   setTimeout(() => {
     session.locked = false;
@@ -888,10 +915,10 @@ function renderSettings(v) {
     <div class="card">
       <h2>Sound</h2>
       <div class="field"><label for="autoplay">Say the word when the answer shows</label>${toggle('autoplay', st.autoplay)}</div>
-      <div class="field"><label for="voice">Voice<small>${voices.length ? 'For the most natural voice on iPhone, download <b>Ava (Premium)</b> or <b>Samantha (Enhanced)</b>: Settings → Accessibility → Read & Speak (Spoken Content) → Voices → English. The app picks it automatically.' : 'No English voices found yet.'}</small></label>
+      <div class="field"><label for="voice">Voice<small>Words, sentences and sounds play from built-in recordings; this voice only reads anything without one. ${voices.length ? 'For the most natural voice on iPhone, download <b>Ava (Premium)</b> or <b>Samantha (Enhanced)</b>: Settings → Accessibility → Read & Speak (Spoken Content) → Voices → English. The app picks it automatically.' : 'No English voices found yet.'}</small></label>
         <select id="voice"><option value="">Automatic</option>${voices.map((x) => `<option value="${esc(x.voiceURI)}" ${x.voiceURI === st.voice ? 'selected' : ''}>${esc(x.name)}${qualityLabel(x) ? ` · ${qualityLabel(x)}` : ''} (${esc(x.lang)})</option>`).join('')}</select></div>
       ${speech.pick() ? `<p class="small muted" style="margin:6px 0 0">Now using: <b>${esc(speech.pick().name)}${qualityLabel(speech.pick()) ? ` · ${qualityLabel(speech.pick())}` : ''}</b>. Just downloaded a voice? Close the app fully and reopen it.</p>` : ''}
-      <div class="field"><label for="rate">Speed <small>${st.rate.toFixed(2)}×</small></label><input type="range" id="rate" min="0.5" max="1.2" step="0.05" value="${st.rate}"></div>
+      <div class="field"><label for="rate">Device voice speed <small>${st.rate.toFixed(2)}×</small></label><input type="range" id="rate" min="0.5" max="1.2" step="0.05" value="${st.rate}"></div>
       <div class="btn-row"><button class="btn" data-say="Look! I can read the big red cat.">🔊 Test voice</button>
         <button class="btn" id="sound-check">🩺 Sound check</button></div>
       <pre class="diag" id="diag" hidden></pre>
@@ -959,7 +986,7 @@ function renderSettings(v) {
 }
 
 // Shows step by step what the device does with speech, so a silent iPhone can be diagnosed
-// from a screenshot. Runs inside the tap, as iOS requires.
+// from a screenshot: first a recorded clip, then the device voice.
 function soundCheck() {
   const out = $('#diag');
   out.hidden = false;
@@ -968,17 +995,15 @@ function soundCheck() {
   const log = (msg) => { out.textContent += `${((Date.now() - t0) / 1000).toFixed(1)}s ${msg}\n`; };
   log(navigator.userAgent);
   log(`Home screen app: ${navigator.standalone || matchMedia('(display-mode: standalone)').matches ? 'yes' : 'no'}`);
-  try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    gain.gain.value = 0.2;
-    osc.connect(gain).connect(ctx.destination);
-    osc.start();
-    osc.stop(ctx.currentTime + 0.3);
-    log(`Beep: audio ${ctx.state}`);
-    setTimeout(() => log(`Beep: audio ${ctx.state} (heard a beep? if not, check the silent switch)`), 400);
-  } catch (e) { log(`Beep failed: ${e.message}`); }
+  const rec = speech.say('Look! I can read the big red cat.');
+  log(`Recording: ${clips.has('look-i-can-read-the-big-red-cat') ? 'playing' : 'not available, using the device voice'} (audio ${clips.state})`);
+  if (rec) {
+    rec.onend = () => { log('Recording: ended'); deviceCheck(log); };
+    rec.onerror = (e) => { log(`Recording: error ${e?.message || e}`); deviceCheck(log); };
+  }
+}
+
+function deviceCheck(log) {
   if (!('speechSynthesis' in window)) { log('No speechSynthesis on this device.'); return; }
   const all = speechSynthesis.getVoices();
   const v = speech.pick();
